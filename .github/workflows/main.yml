@@ -36,7 +36,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
             
-      # Step 5: Create and start the Android emulator
+      # Step 5: Restart ADB Server
+      - name: Restart ADB Server
+        run: |
+          adb kill-server
+          adb start-server
+
+      # Step 6: Create and start the Android emulator
       - name: Create and start emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -55,13 +61,6 @@ jobs:
             echo "Emulator started - checking devices:"
             adb wait-for-device # Wait for device to be ready
             adb shell input keyevent 82 # Unlocks the device
-
-      # Step 6: Wait for Emulator to be Ready (optional if included above)
-      # Uncomment if additional waiting logic is needed.
-      # - name: Wait for Emulator to be Ready
-      #   run: |
-      #     adb wait-for-device
-      #     adb shell input keyevent 82 # Unlocks the device
 
       # Step 7: Build the project using Maven
       - name: Build with Maven
