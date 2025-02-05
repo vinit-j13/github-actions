@@ -11,6 +11,10 @@ on:
 jobs:
   build:
     runs-on: macos-13
+    env:
+      ANDROID_HOME: /Users/runner/Library/Android/sdk
+      PATH: $PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator
+      
     steps:
       # Step 1: Checkout the code from the repository
       - uses: actions/checkout@v4
@@ -50,45 +54,55 @@ jobs:
       - name: List Available System Images
         run: sdkmanager --list
 
-      # Step 8: Install Required System Image if not already installed
+      # Step 8: Install Required System Image
       - name: Install Required System Image
-        run: sdkmanager "system-images;android-29;default;x86_64"
+        run: sdkmanager "system-images;android-29;google_apis;x86_64"
 
       # Step 9: Install Emulator and Tools
       - name: Install Emulator and Tools
         run: |
-          sdkmanager "emulator" "platform-tools" "platforms;android-29" "system-images;android-29;default;x86_64"
+          sdkmanager --install "emulator" "platform-tools" "platforms;android-29" "system-images;android-29;google_apis;x86_64"
+          yes | sdkmanager --licenses
   
       # Step 10: Create AVDs
       - name: Create AVDs
         run: |
           echo "Creating first AVD..."
-          echo "no" | avdmanager create avd -n emulator1 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64 --sdcard 512M
+          echo "no" | avdmanager create avd -n emulator1 -k "system-images;android-29;google_apis;x86_64" --force
           echo "Creating second AVD..."
-          echo "no" | avdmanager create avd -n emulator2 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64 --sdcard 512M
+          echo "no" | avdmanager create avd -n emulator2 -k "system-images;android-29;google_apis;x86_64" --force
       
-      # Step 11: Start both emulators in parallel and wait for them to be ready
+      # Step 11: Start Emulators
       - name: Start Emulators
         run: |
-            echo "Starting first emulator..."
-            emulator -avd emulator1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
-            echo "Starting second emulator..."
-            emulator -avd emulator2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
-
-            # Wait for both emulators to be ready before proceeding
-            adb wait-for-device # Wait for the first device to be ready
-            
-            adb shell input keyevent 82 # Unlocks the first device
-
-            adb wait-for-device # Wait for the second device to be ready
-            
-            adb shell input keyevent 82 # Unlocks the second device
-            
-            echo "Both emulators are ready."
-            
-            echo "Starting Appium Server..."
-            appium & sleep 5
-            
-            echo "Running Tests on apk"
-            mvn test
-
+          echo "Starting first emulator..."
+          $ANDROID_HOME/emulator/emulator -avd emulator1 -no-window -no-audio -no-boot-anim &
+          echo "Starting second emulator..."
+          $ANDROID_HOME/emulator/emulator -avd emulator2 -no-window -no-audio -no-boot-anim &
+          
+          echo "Waiting for emulators to boot..."
+          adb wait-for-device
+          
+          # Wait for both emulators to be fully booted
+          while [[ -z $(adb devices | grep "emulator-") ]]; do
+            echo "Waiting for emulators..."
+            sleep 10
+          done
+          
+          # Wait for system boot completion
+          for device in $(adb devices | grep "emulator-" | cut -f1); do
+            while [[ $(adb -s $device shell getprop sys.boot_completed) != "1" ]]; do
+              echo "Waiting for $device boot completion..."
+              sleep 5
+            done
+            echo "$device is ready"
+            adb -s $device shell input keyevent 82
+          done
+          
+          echo "Both emulators are ready."
+          
+          echo "Starting Appium Server..."
+          appium & sleep 5
+          
+          echo "Running Tests on apk"
+          mvn test
