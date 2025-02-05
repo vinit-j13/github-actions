@@ -10,7 +10,6 @@ on:
 jobs:
   build:
     runs-on: macos-13
-    
     steps:
       - uses: actions/checkout@v4
       
@@ -20,15 +19,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           
-
+      - name: Install Appium
+        run: |
+          npm i -g appium
+          appium --version
           
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install Appium
-        run:  |
-          npm i -g appium
-          appium --version
         
       - name: Cache Maven packages
         uses: actions/cache@v3
@@ -36,54 +33,40 @@ jobs:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
-            ${{ runner.os }}-maven- 
-    
-      - name: Prepare ADB and SDK
+            ${{ runner.os }}-maven-
+
+      - name: Restart ADB Server
         run: |
-          echo "$HOME/Library/Android/sdk/emulator" >> $GITHUB_PATH
-          echo "$HOME/Library/Android/sdk/platform-tools" >> $GITHUB_PATH
-          adb kill-server
+          adb kill-server || true # Ignore if ADB is not running
           adb start-server
-      
-      - name: Install Android Components
+
+      - name: Install Emulator and Required System Image
         run: |
-          sdkmanager --install "platforms;android-29" "system-images;android-29;default;x86_64"
-          sdkmanager --install "emulator" "platform-tools"
-          yes | sdkmanager --licenses
+          sdkmanager --install "emulator" "system-images;android-29;default;x86_64"
+          sdkmanager --licenses
 
-      - name: Create AVD
+      - name: Create AVDs
         run: |
-          avdmanager create avd \
-            -n test_emulator \
-            -k "system-images;android-29;default;x86_64" \
-            --device "pixel_4" \
-            --force
+          echo "no" | avdmanager create avd -n emulator1 -k "system-images;android-29;default;x86_64" --force --device "pixel"
+          echo "no" | avdmanager create avd -n emulator2 -k "system-images;android-29;default;x86_64" --force --device "pixel"
 
-      - name: Start Emulator
+      - name: Start Two Emulators and Wait for Boot
         run: |
-          $ANDROID_SDK_ROOT/emulator/emulator \
-            -avd test_emulator \
-            -no-window \
-            -no-audio \
-            -no-boot-anim \
-            -gpu swiftshader_indirect &
+          echo "Starting first emulator..."
+          nohup emulator -avd emulator1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim > /dev/null 2>&1 &
 
-          # Wait for emulator to boot
-          timeout 180 bash -c '
-            while ! adb devices | grep -q "emulator-5554"; do
-              echo "Waiting for emulator to connect..."
-              sleep 5
-            done
-          '
+          echo "Starting second emulator..."
+          nohup emulator -avd emulator2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim > /dev/null 2>&1 &
 
-          # Verify devices
+          echo "Waiting for both emulators to be ready..."
+          for i in {1..30}; do
+            if adb devices | grep -q "emulator-5554" && adb devices | grep -q "emulator-5556"; then
+              echo "Both emulators are ready."
+              break
+            fi
+            echo "Waiting for emulators to connect..."
+            sleep 10
+          done
           adb devices -l
-          adb shell getprop sys.boot_completed
-
-      - name: Start Appium Server
-        run: |
-          appium --port 4723 &
-          sleep 10  # Give Appium time to start
-
-      - name: Run Tests
-        run: mvn clean test -Dappium.port=4723
+          appium & sleep 5
+          mvn test
