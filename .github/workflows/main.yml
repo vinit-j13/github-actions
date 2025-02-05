@@ -11,7 +11,7 @@ on:
 jobs:
   build:
     runs-on: macos-13
-
+    
     steps:
       # Step 1: Checkout the code from the repository
       - uses: actions/checkout@v4
@@ -36,8 +36,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
    
-      # Step 5: Restart ADB server
-      - name: Restart adb server
+      # Step 5: Restart ADB Server
+      - name: Restart ADB Server
         run: |
           adb kill-server || true # Ignore if ADB is not running
           adb start-server
@@ -52,6 +52,7 @@ jobs:
           force-avd-creation: true
           emulator-options: |
             -no-snapshot-save 
+            -no-snapshot-load 
             -no-window 
             -gpu swiftshader_indirect 
             -noaudio 
@@ -59,16 +60,16 @@ jobs:
           disable-animations: true
           script: |
             echo "Emulator started - checking devices:"
-            adb devices
-            echo "Emulator is ready"
+            adb wait-for-device # Wait for device to be ready
+            adb shell input keyevent 82 # Unlocks the device
       
       # Step 7: Start Appium server
       - name: Start Appium server
         run: |
           appium &
           sleep 5
-
+      
       # Step 8: Build the project using Maven
-      - name: Build and run with Maven
-        run: mvn test -DsuiteXmlFile= AutoAssignRide.xml
+      - name: Build with Maven
+        run: mvn test -DsuiteXmlFile=AutoAssignRideFlow.xml
 
