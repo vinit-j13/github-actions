@@ -1,77 +1,77 @@
 name: Android CI with Maven
-
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: macos-13
-    env:
-      ANDROID_HOME: /Users/runner/Library/Android/sdk
-
     steps:
       - uses: actions/checkout@v4
-
+      
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-
-      - name: Setup Android SDK Paths
-        run: |
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_HOME/emulator" >> $GITHUB_PATH
-          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
-
+          
+      - name: Install Appium
+        run:  |
+          npm i -g appium
+          appium --version
+          
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
-        with:
-          licenses: android-sdk-license
-
-      - name: Cache Android SDK
+        uses: android-actions/setup-android@v3
+        
+      - name: Cache Maven packages
         uses: actions/cache@v3
         with:
-          path: |
-            ${{ env.ANDROID_HOME }}/cmdline-tools
-            ${{ env.ANDROID_HOME }}/emulator
-            ${{ env.ANDROID_HOME }}/platform-tools
-          key: ${{ runner.os }}-android-${{ hashFiles('**/gradle.properties') }}
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven- 
+    
+      - name: Restart ADB Server
+        run: |
+          adb kill-server || true # Ignore if ADB is not running
+          adb start-server
+      
+      - name: List Available System Images
+        run: sdkmanager --list
+
+      # Step 8: Install Required System Image if not already installed
+      - name: Install Required System Image
+        run: sdkmanager "system-images;android-29;default;x86_64"
 
       - name: Install Emulator and Tools
         run: |
-          sdkmanager --install "platforms;android-34" "system-images;android-34;google_apis;x86_64"
-          yes | sdkmanager --licenses
-
+          sdkmanager "emulator" "platform-tools" "platforms;android-29" "system-images;android-29;default;x86_64"
+  
       - name: Create AVDs
         run: |
-          avdmanager create avd -n emulator1 -k "system-images;android-34;google_apis;x86_64" --force
-          avdmanager create avd -n emulator2 -k "system-images;android-34;google_apis;x86_64" --force
-
-      - name: Start Emulators
-        run: |
-          $ANDROID_HOME/emulator/emulator -avd emulator1 -no-window -no-audio -no-boot-anim -no-snapshot -port 5554 &
-          $ANDROID_HOME/emulator/emulator -avd emulator2 -no-window -no-audio -no-boot-anim -no-snapshot -port 5556 &
-
-          for port in 5554 5556; do
-            adb -s emulator-$port wait-for-device
-            until adb -s emulator-$port shell getprop sys.boot_completed | grep "1"; do
+          echo "Creating first AVD..."
+          echo "no" | avdmanager create avd -n emulator1 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64 --device "pixel"
+          echo "Creating second AVD..."
+          echo "no" | avdmanager create avd -n emulator2 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64 --device "pixel"
+          echo "Starting first emulator..."
+          sleep 120
+          emulator -avd emulator1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
+          echo "Starting second emulator..."
+          emulator -avd emulator2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
+          echo "Emulator started - checking devices:"
+          timeout 180 bash -c '
+            while ! adb devices | grep -q "emulator-5554"; do
+              echo "Waiting for emulator to connect..."
               sleep 5
             done
-            adb -s emulator-$port shell settings put global window_animation_scale 0
-            adb -s emulator-$port shell settings put global transition_animation_scale 0
-            adb -s emulator-$port shell settings put global animator_duration_scale 0
-          done
-
-      - name: Start Appium Server
-        run: |
-          npm install -g appium@2.0.0
-          appium --port 4723 --relaxed-security &
-          npx wait-on http://localhost:4723/wd/hub/status
-
-      - name: Run Parallel Tests
-        run: |
-          mvn test -Dappium.port=4723 -Ddevice.udid=emulator-5554 -Dparallel=classes -DthreadCount=2
+          '
+          adb devices -l
+          echo " Both Emulators are ready"
+          echo "Starting Appium Server....."
+          appium & sleep 5
+          echo "Running Tests on apk"
+          mvn test
