@@ -29,6 +29,11 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+   
+      - name: Restart adb server
+        run: |
+          adb kill-server || true # Ignore if ADB is not running
+          adb start-server
             
       - name: Create and start emulator
         uses: reactivecircus/android-emulator-runner@v2
