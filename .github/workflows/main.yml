@@ -19,6 +19,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           
+      - name: Install Appium
+        run:  npm i -g appium
+          
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         
@@ -49,9 +52,8 @@ jobs:
             echo "Emulator started - checking devices:"
             adb devices
             echo "Emulator is ready"
-
-      - name: Start Appium server
-        run: appium & sleep 5
-        
-      - name: Build with Maven
-        run: mvn test
+            echo "Starting Appium Server....."
+            appium & sleep 5
+            echo "Running Tests on apk"
+            mvn test
+            
