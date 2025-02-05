@@ -39,6 +39,16 @@ jobs:
         run: |
           adb kill-server || true # Ignore if ADB is not running
           adb start-server
+      
+      - name: List Available System Images
+        run: sdkmanager --list
+
+      # Step 8: Install Required System Image if not already installed
+      - name: Install Required System Image
+        run: sdkmanager "system-images;android-29;default;x86_64"
+
+
+
           
       - name: Create AVDs
         run: |
@@ -47,6 +57,11 @@ jobs:
           echo "Creating second AVD..."
           echo "no" | avdmanager create avd -n emulator2 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64  
      
+     
+      
+      
+      
+      
       - name: Create and start emulator
         run: |
             echo "Starting first emulator..."
