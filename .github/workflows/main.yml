@@ -57,20 +57,16 @@ jobs:
           echo "no" | avdmanager create avd -n emulator1 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64
           echo "Creating second AVD..."
           echo "no" | avdmanager create avd -n emulator2 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64  
-     
-     
-      
-      - name: Create and start emulator
-        run: |
-            echo "Starting first emulator..."
-            emulator -avd emulator1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
-            echo "Starting second emulator..."
-            emulator -avd emulator2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
-            echo "Emulator started - checking devices:"
-            adb devices
-            echo " Both Emulators are ready"
-            echo "Starting Appium Server....."
-            appium & sleep 5
-            echo "Running Tests on apk"
-            mvn test
+          echo "Starting first emulator..."
+          sleep 120
+          emulator -avd emulator1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
+          echo "Starting second emulator..."
+          emulator -avd emulator2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
+          echo "Emulator started - checking devices:"
+          adb devices
+          echo " Both Emulators are ready"
+          echo "Starting Appium Server....."
+          appium & sleep 5
+          echo "Running Tests on apk"
+          mvn test
             
