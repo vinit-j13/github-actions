@@ -22,13 +22,15 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           
+
+          
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Install Appium
         run:  |
           npm i -g appium
           appium --version
-          
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
         
       - name: Cache Maven packages
         uses: actions/cache@v3
