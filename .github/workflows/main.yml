@@ -2,18 +2,15 @@ name: Android CI with Maven
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   build:
     runs-on: macos-13
     env:
       ANDROID_HOME: /Users/runner/Library/Android/sdk
-      PATH: ${{ env.PATH }}:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools
 
     steps:
       - uses: actions/checkout@v4
@@ -24,68 +21,57 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Appium
+      - name: Setup Android SDK Paths
         run: |
-          npm install -g appium
-          appium --version
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/emulator" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
+        with:
+          licenses: android-sdk-license
 
-      - name: Cache Maven packages
+      - name: Cache Android SDK
         uses: actions/cache@v3
         with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+          path: |
+            ${{ env.ANDROID_HOME }}/cmdline-tools
+            ${{ env.ANDROID_HOME }}/emulator
+            ${{ env.ANDROID_HOME }}/platform-tools
+          key: ${{ runner.os }}-android-${{ hashFiles('**/gradle.properties') }}
 
       - name: Install Emulator and Tools
         run: |
-          sdkmanager --install "emulator" "platform-tools" "platforms;android-29" "system-images;android-29;google_apis;arm64-v8a"
+          sdkmanager --install "platforms;android-34" "system-images;android-34;google_apis;x86_64"
           yes | sdkmanager --licenses
 
       - name: Create AVDs
         run: |
-          echo "no" | avdmanager create avd -n emulator1 -k "system-images;android-29;google_apis;arm64-v8a" --force
-          echo "no" | avdmanager create avd -n emulator2 -k "system-images;android-29;google_apis;arm64-v8a" --force
+          avdmanager create avd -n emulator1 -k "system-images;android-34;google_apis;x86_64" --force
+          avdmanager create avd -n emulator2 -k "system-images;android-34;google_apis;x86_64" --force
 
       - name: Start Emulators
         run: |
-          echo "Starting first emulator..."
-          $ANDROID_HOME/emulator/emulator -avd emulator1 -no-window -no-audio -no-boot-anim -no-snapshot-load &
-          echo "Starting second emulator..."
-          $ANDROID_HOME/emulator/emulator -avd emulator2 -no-window -no-audio -no-boot-anim -no-snapshot-load &
+          $ANDROID_HOME/emulator/emulator -avd emulator1 -no-window -no-audio -no-boot-anim -no-snapshot -port 5554 &
+          $ANDROID_HOME/emulator/emulator -avd emulator2 -no-window -no-audio -no-boot-anim -no-snapshot -port 5556 &
 
-          echo "Waiting for emulators to boot..."
-          adb -s emulator-5554 wait-for-device
-          adb -s emulator-5556 wait-for-device
-
-          for device in emulator-5554 emulator-5556; do
-            until adb -s $device shell getprop sys.boot_completed | grep "1"; do
-              echo "Waiting for $device boot completion..."
+          for port in 5554 5556; do
+            adb -s emulator-$port wait-for-device
+            until adb -s emulator-$port shell getprop sys.boot_completed | grep "1"; do
               sleep 5
             done
-            echo "$device is ready"
-            adb -s $device shell input keyevent 82
+            adb -s emulator-$port shell settings put global window_animation_scale 0
+            adb -s emulator-$port shell settings put global transition_animation_scale 0
+            adb -s emulator-$port shell settings put global animator_duration_scale 0
           done
-
-          sleep 30  # Ensure the emulator is fully booted
 
       - name: Start Appium Server
         run: |
-          appium &
+          npm install -g appium@2.0.0
+          appium --port 4723 --relaxed-security &
+          npx wait-on http://localhost:4723/wd/hub/status
 
-          while ! curl -s http://localhost:4723/wd/hub/status | grep '"state":"running"'; do
-            echo "Waiting for Appium to start..."
-            sleep 1
-          done
-
-      - name: Run Tests on APK
-        run: mvn test
-
-
-
-
-
-
+      - name: Run Parallel Tests
+        run: |
+          mvn test -Dappium.port=4723 -Ddevice.udid=emulator-5554 -Dparallel=classes -DthreadCount=2
