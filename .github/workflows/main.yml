@@ -10,6 +10,9 @@ on:
 jobs:
   build:
     runs-on: macos-13
+    env:
+      ANDROID_SDK_ROOT: $HOME/Library/Android/sdk
+
     steps:
       - uses: actions/checkout@v4
       
@@ -35,43 +38,52 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven- 
     
-      - name: Restart ADB Server
+      - name: Prepare ADB and SDK
         run: |
-          adb kill-server || true # Ignore if ADB is not running
+          echo "$HOME/Library/Android/sdk/emulator" >> $GITHUB_PATH
+          echo "$HOME/Library/Android/sdk/platform-tools" >> $GITHUB_PATH
+          adb kill-server
           adb start-server
       
-      - name: List Available System Images
-        run: sdkmanager --list
-
-      # Step 8: Install Required System Image if not already installed
-      - name: Install Required System Image
-        run: sdkmanager "system-images;android-29;default;x86_64"
-
-      - name: Install Emulator and Tools
+      - name: Install Android Components
         run: |
-          sdkmanager "emulator" "platform-tools" "platforms;android-29" "system-images;android-29;default;x86_64"
-  
-      - name: Create AVDs
+          sdkmanager --install "platforms;android-29" "system-images;android-29;default;x86_64"
+          sdkmanager --install "emulator" "platform-tools"
+          yes | sdkmanager --licenses
+
+      - name: Create AVD
         run: |
-          echo "Creating first AVD..."
-          echo "no" | avdmanager create avd -n emulator1 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64 --device "pixel"
-          echo "Creating second AVD..."
-          echo "no" | avdmanager create avd -n emulator2 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64 --device "pixel"
-          echo "Starting first emulator..."
-          sleep 120
-          emulator -avd emulator1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
-          echo "Starting second emulator..."
-          emulator -avd emulator2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
-          echo "Emulator started - checking devices:"
+          avdmanager create avd \
+            -n test_emulator \
+            -k "system-images;android-29;default;x86_64" \
+            --device "pixel_4" \
+            --force
+
+      - name: Start Emulator
+        run: |
+          $ANDROID_SDK_ROOT/emulator/emulator \
+            -avd test_emulator \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -gpu swiftshader_indirect &
+
+          # Wait for emulator to boot
           timeout 180 bash -c '
             while ! adb devices | grep -q "emulator-5554"; do
               echo "Waiting for emulator to connect..."
               sleep 5
             done
           '
+
+          # Verify devices
           adb devices -l
-          echo " Both Emulators are ready"
-          echo "Starting Appium Server....."
-          appium & sleep 5
-          echo "Running Tests on apk"
-          mvn test
+          adb shell getprop sys.boot_completed
+
+      - name: Start Appium Server
+        run: |
+          appium --port 4723 &
+          sleep 10  # Give Appium time to start
+
+      - name: Run Tests
+        run: mvn clean test -Dappium.port=4723
