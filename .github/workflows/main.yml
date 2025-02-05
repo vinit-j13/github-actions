@@ -13,30 +13,25 @@ jobs:
     runs-on: macos-13
     env:
       ANDROID_HOME: /Users/runner/Library/Android/sdk
-      PATH: ${{ env.PATH }}:$ANDROID_HOME/cmdline-tools/latest:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools
+      PATH: ${{ env.PATH }}:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools
 
     steps:
-      # Step 1: Checkout the code from the repository
       - uses: actions/checkout@v4
 
-      # Step 2: Set up JDK 17
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # Step 3: Install Appium
       - name: Install Appium
         run: |
           npm install -g appium
           appium --version
 
-      # Step 4: Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
 
-      # Step 5: Cache Maven packages
       - name: Cache Maven packages
         uses: actions/cache@v3
         with:
@@ -45,33 +40,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # Step 6: Install Emulator and Tools
       - name: Install Emulator and Tools
         run: |
           sdkmanager --install "emulator" "platform-tools" "platforms;android-29" "system-images;android-29;google_apis;arm64-v8a"
           yes | sdkmanager --licenses
 
-      # Step 7: Create AVDs
       - name: Create AVDs
         run: |
-          echo "Creating first AVD..."
           echo "no" | avdmanager create avd -n emulator1 -k "system-images;android-29;google_apis;arm64-v8a" --force
-          echo "Creating second AVD..."
           echo "no" | avdmanager create avd -n emulator2 -k "system-images;android-29;google_apis;arm64-v8a" --force
 
-      # Step 8: Start Emulators
       - name: Start Emulators
         run: |
           echo "Starting first emulator..."
-          $ANDROID_HOME/emulator/emulator -avd emulator1 -no-window -no-audio -no-boot-anim &
+          $ANDROID_HOME/emulator/emulator -avd emulator1 -no-window -no-audio -no-boot-anim -no-snapshot-load &
           echo "Starting second emulator..."
-          $ANDROID_HOME/emulator/emulator -avd emulator2 -no-window -no-audio -no-boot-anim &
+          $ANDROID_HOME/emulator/emulator -avd emulator2 -no-window -no-audio -no-boot-anim -no-snapshot-load &
 
           echo "Waiting for emulators to boot..."
-          adb wait-for-device
+          adb -s emulator-5554 wait-for-device
+          adb -s emulator-5556 wait-for-device
 
-          # Wait for both emulators to be fully booted
-          for device in $(adb devices | grep "emulator-" | cut -f1); do
+          for device in emulator-5554 emulator-5556; do
             until adb -s $device shell getprop sys.boot_completed | grep "1"; do
               echo "Waiting for $device boot completion..."
               sleep 5
@@ -80,11 +70,22 @@ jobs:
             adb -s $device shell input keyevent 82
           done
 
-          echo "Both emulators are ready."
+          sleep 30  # Ensure the emulator is fully booted
 
-          echo "Starting Appium Server..."
+      - name: Start Appium Server
+        run: |
           appium &
-          while ! nc -z localhost 4723; do sleep 1; done
 
-          echo "Running Tests on apk"
-          mvn test
+          while ! curl -s http://localhost:4723/wd/hub/status | grep '"state":"running"'; do
+            echo "Waiting for Appium to start..."
+            sleep 1
+          done
+
+      - name: Run Tests on APK
+        run: mvn test
+
+
+
+
+
+
