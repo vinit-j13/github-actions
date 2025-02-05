@@ -40,16 +40,15 @@ jobs:
           adb kill-server || true # Ignore if ADB is not running
           adb start-server
           
+      - name: Create AVDs
+        run: |
+          echo "Creating first AVD..."
+          echo "no" | avdmanager create avd -n emulator1 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64
+          echo "Creating second AVD..."
+          echo "no" | avdmanager create avd -n emulator2 -k "system-images;android-29;default;x86_64" --force --abi default/x86_64  
+     
       - name: Create and start emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 29
-          target: default
-          arch: x86_64
-          force-avd-creation: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          disable-animations: true
-          script: |
+        run: |
             echo "Starting first emulator..."
             emulator -avd emulator1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
             echo "Starting second emulator..."
