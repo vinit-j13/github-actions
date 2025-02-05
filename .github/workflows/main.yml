@@ -20,7 +20,9 @@ jobs:
           java-version: '17'
           
       - name: Install Appium
-        run:  npm i -g appium
+        run:  |
+          npm i -g appium
+          appium --version
           
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -31,9 +33,8 @@ jobs:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
-            ${{ runner.os }}-maven-
-     
-      # Step 5: Restart ADB Server
+            ${{ runner.os }}-maven- 
+    
       - name: Restart ADB Server
         run: |
           adb kill-server || true # Ignore if ADB is not running
@@ -49,9 +50,13 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
           script: |
+            echo "Starting first emulator..."
+            emulator -avd emulator1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
+            echo "Starting second emulator..."
+            emulator -avd emulator2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim &
             echo "Emulator started - checking devices:"
             adb devices
-            echo "Emulator is ready"
+            echo " Both Emulators are ready"
             echo "Starting Appium Server....."
             appium & sleep 5
             echo "Running Tests on apk"
