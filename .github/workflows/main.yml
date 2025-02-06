@@ -63,7 +63,7 @@ jobs:
             -wipe-data &
 
       - name: Wait for Emulators
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: |
           # Get serial numbers
           emulator1_serial=$(emulator -list-avds | grep test_emulator1 | sed 's/name:.*id:\s*//' | tr -d '\r')
